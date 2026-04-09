@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Header } from "@/components/layout/header";
-import { Users, BookOpen, Layers, ArrowLeft, UsersRound, X, Plus, Trash2, Upload, Mail, ChevronDown, Check, FileText, ChevronRight, GraduationCap, School, HelpCircle, Pencil, ExternalLink, Settings, Search } from "lucide-react";
+import { Users, BookOpen, Layers, ArrowLeft, UsersRound, X, Plus, Trash2, Upload, Mail, ChevronDown, Check, FileText, ChevronRight, GraduationCap, School, HelpCircle, Pencil, ExternalLink, Settings, Search, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
@@ -12,6 +12,7 @@ import ClientLeaderboardView from "@/app/school/[id]/cohort/[cohortId]/leaderboa
 import Tooltip from "@/components/Tooltip";
 import CohortMemberManagement from "@/components/CohortMemberManagement";
 import CohortDashboard from "@/components/CohortDashboard";
+import CohortEngagementDashboard from "@/components/CohortEngagementDashboard";
 import CohortCoursesLinkerDropdown from "@/components/CohortCoursesLinkerDropdown";
 import SettingsDialog from "@/components/SettingsDialog";
 import CreateBatchDialog from "@/components/CreateBatchDialog";
@@ -26,7 +27,7 @@ interface Course {
     drip_config?: DripConfig;
 }
 
-type TabType = 'dashboard' | 'learners' | 'mentors' | 'batches';
+type TabType = 'dashboard' | 'engagement' | 'learners' | 'mentors' | 'batches';
 
 interface ClientCohortPageProps {
     schoolId: string;
@@ -867,6 +868,15 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
                                     </button>
                                 )}
                                 <button
+                                    className={`flex-1 px-4 py-2 font-light cursor-pointer ${tab === 'engagement' ? 'text-black dark:text-white border-b-2 border-black dark:border-white' : 'text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white'}`}
+                                    onClick={() => setTab('engagement')}
+                                >
+                                    <div className="flex items-center justify-center">
+                                        <BarChart3 size={16} className="mr-2" />
+                                        Engagement
+                                    </div>
+                                </button>
+                                <button
                                     className={`flex-1 px-4 py-2 font-light cursor-pointer ${tab === 'learners' ? 'text-black dark:text-white border-b-2 border-black dark:border-white' : 'text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white'}`}
                                     onClick={() => setTab('learners')}
                                 >
@@ -905,6 +915,10 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
                                 schoolSlug={schoolSlug}
                                 onAddLearners={handleOpenLearnerInviteDialog}
                             />
+                        )}
+
+                        {tab === 'engagement' && (
+                            <CohortEngagementDashboard cohortId={cohortId} />
                         )}
 
                         {tab === 'learners' && (
