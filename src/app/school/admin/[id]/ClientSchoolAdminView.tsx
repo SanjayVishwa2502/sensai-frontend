@@ -73,67 +73,108 @@ export default function ClientSchoolAdminView({ id }: { id: string }) {
         }
     }, []);
 
+    const fetchSchool = useCallback(async (showLoadingState: boolean = true) => {
+        if (showLoadingState) {
+            setLoading(true);
+        }
+
+        try {
+            // Fetch basic school info
+            const schoolResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/organizations/${id}`);
+            if (!schoolResponse.ok) {
+                throw new Error(`API error: ${schoolResponse.status}`);
+            }
+            const schoolData = await schoolResponse.json();
+
+            // Fetch members separately
+            const membersResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/organizations/${id}/members`);
+            if (!membersResponse.ok) {
+                throw new Error(`API error: ${membersResponse.status}`);
+            }
+            const membersData = await membersResponse.json();
+
+            // Fetch cohorts separately
+            const cohortsResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/cohorts/?org_id=${id}`);
+            if (!cohortsResponse.ok) {
+                throw new Error(`API error: ${cohortsResponse.status}`);
+            }
+            const cohortsData = await cohortsResponse.json();
+
+            // Fetch courses separately
+            const coursesResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/courses/?org_id=${id}`);
+            if (!coursesResponse.ok) {
+                throw new Error(`API error: ${coursesResponse.status}`);
+            }
+            const coursesData = await coursesResponse.json();
+
+            // Transform the API response to match the School interface
+            const transformedSchool: School = {
+                id: parseInt(schoolData.id),
+                name: schoolData.name,
+                url: `${process.env.NEXT_PUBLIC_APP_URL}/school/${schoolData.slug}`,
+                courses: coursesData.map((course: any) => ({
+                    id: course.id,
+                    name: course.name,
+                    moduleCount: 0, // Default value since API doesn't provide this
+                    description: '' // Default value since API doesn't provide this
+                })),
+                cohorts: cohortsData.map((cohort: any) => ({
+                    id: cohort.id,
+                    name: cohort.name,
+                })),
+                members: membersData || []
+            };
+
+            setSchool(transformedSchool);
+        } catch (error) {
+            console.error("Error fetching school:", error);
+        } finally {
+            if (showLoadingState) {
+                setLoading(false);
+            }
+        }
+    }, [id]);
+
     // Fetch school data
     useEffect(() => {
-        const fetchSchool = async () => {
-            setLoading(true);
-            try {
-                // Fetch basic school info
-                const schoolResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/organizations/${id}`);
-                if (!schoolResponse.ok) {
-                    throw new Error(`API error: ${schoolResponse.status}`);
-                }
-                const schoolData = await schoolResponse.json();
+        void fetchSchool(true);
+    }, [fetchSchool]);
 
-                // Fetch members separately
-                const membersResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/organizations/${id}/members`);
-                if (!membersResponse.ok) {
-                    throw new Error(`API error: ${membersResponse.status}`);
-                }
-                const membersData = await membersResponse.json();
+    // Keep admin school view near real-time with background refreshes
+    useEffect(() => {
+        const refreshSchool = () => {
+            void fetchSchool(false);
+        };
 
-                // Fetch cohorts separately
-                const cohortsResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/cohorts/?org_id=${id}`);
-                if (!cohortsResponse.ok) {
-                    throw new Error(`API error: ${cohortsResponse.status}`);
-                }
-                const cohortsData = await cohortsResponse.json();
+        const intervalId = window.setInterval(refreshSchool, 10000);
 
-                // Fetch courses separately
-                const coursesResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/courses/?org_id=${id}`);
-                if (!coursesResponse.ok) {
-                    throw new Error(`API error: ${coursesResponse.status}`);
-                }
-                const coursesData = await coursesResponse.json();
-
-                // Transform the API response to match the School interface
-                const transformedSchool: School = {
-                    id: parseInt(schoolData.id),
-                    name: schoolData.name,
-                    url: `${process.env.NEXT_PUBLIC_APP_URL}/school/${schoolData.slug}`,
-                    courses: coursesData.map((course: any) => ({
-                        id: course.id,
-                        name: course.name,
-                        moduleCount: 0, // Default value since API doesn't provide this
-                        description: '' // Default value since API doesn't provide this
-                    })),
-                    cohorts: cohortsData.map((cohort: any) => ({
-                        id: cohort.id,
-                        name: cohort.name,
-                    })),
-                    members: membersData || []  // Use the members from the separate endpoint
-                };
-
-                setSchool(transformedSchool);
-                setLoading(false);
-            } catch (error) {
-                console.error("Error fetching school:", error);
-                setLoading(false);
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                refreshSchool();
             }
         };
 
-        fetchSchool();
-    }, [id, router]);
+        const handleMembershipUpdate = () => {
+            refreshSchool();
+        };
+
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === 'sensai:cohort-membership-updated') {
+                refreshSchool();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('sensai:cohort-membership-updated', handleMembershipUpdate as EventListener);
+        window.addEventListener('storage', handleStorage);
+
+        return () => {
+            window.clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('sensai:cohort-membership-updated', handleMembershipUpdate as EventListener);
+            window.removeEventListener('storage', handleStorage);
+        };
+    }, [fetchSchool]);
 
     // Keep browser tab title in sync with the current school name (admin side)
     useEffect(() => {
@@ -414,7 +455,15 @@ export default function ClientSchoolAdminView({ id }: { id: string }) {
         } else {
             // Remove hash if it's the courses tab
             if (window.location.hash && typeof window !== 'undefined' && window.history) {
-                history.pushState("", document.title, window.location.pathname);
+                const currentState =
+                    typeof window.history.state === 'object' && window.history.state !== null
+                        ? window.history.state
+                        : {};
+                window.history.replaceState(
+                    { ...currentState },
+                    document.title,
+                    window.location.pathname,
+                );
             }
         }
     };

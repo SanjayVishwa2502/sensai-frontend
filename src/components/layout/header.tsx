@@ -160,7 +160,7 @@ export function Header({
                             alt="SensAI Logo"
                             width={120}
                             height={40}
-                            className="hidden dark:block w-[100px] h-auto sm:w-[120px]"
+                            className="hidden dark:block w-[72px] h-auto sm:w-[96px]"
                             style={{ maxWidth: '100%', height: 'auto' }}
                             priority
                         />
@@ -170,7 +170,7 @@ export function Header({
                             alt="SensAI Logo"
                             width={120}
                             height={40}
-                            className="block dark:hidden w-[100px] h-auto sm:w-[120px]"
+                            className="block dark:hidden w-[72px] h-auto sm:w-[96px]"
                             style={{ maxWidth: '100%', height: 'auto' }}
                             priority
                         />

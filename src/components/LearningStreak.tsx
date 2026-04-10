@@ -81,6 +81,7 @@ export default function LearningStreak({ streakDays, activeDays }: LearningStrea
         <div className="rounded-lg border overflow-hidden bg-white border-gray-300 dark:bg-[#121212] dark:border-gray-800">
             <div className="px-4 py-3 border-b bg-[#F6C16E] border-[#D39228] dark:bg-[#2A2000] dark:border-gray-800">
                 <h3 className="text-lg font-light text-black dark:text-white">Learning Streak</h3>
+                <p className="text-xs mt-1 text-black/80 dark:text-gray-300">ALM verified (15+ active min/day)</p>
             </div>
 
             <div className="p-4">

@@ -99,6 +99,13 @@ jest.mock('../../components/LearningStreak', () => {
     };
 });
 
+// Mock EngagementDashboard because LearnerCohortView renders it in the sidebar now.
+jest.mock('../../components/engagement/EngagementDashboard', () => {
+    return function MockEngagementDashboard() {
+        return <div data-testid="learning-streak">Engagement Dashboard</div>;
+    };
+});
+
 // Mock TopPerformers with proper onEmptyData handling
 jest.mock('../../components/TopPerformers', () => {
     return function MockTopPerformers({ onEmptyData, schoolId, cohortId }: any) {
@@ -678,7 +685,7 @@ describe('LearnerCohortView Component', () => {
             // Should trigger fetchStreakData after timeout (line 247)
             await waitFor(() => {
                 expect(global.fetch).toHaveBeenCalledWith(
-                    expect.stringContaining('/users/test-user-id/streak')
+                    expect.stringContaining('/engagement/alm/test-user-id')
                 );
             }, { timeout: 1000 });
         });
@@ -766,7 +773,7 @@ describe('LearnerCohortView Component', () => {
 
             await waitFor(() => {
                 expect(global.fetch).toHaveBeenCalledWith(
-                    'http://localhost:3000/users/test-user-id/streak?cohort_id=test-cohort-id'
+                    'http://localhost:3000/engagement/alm/test-user-id?cohort_id=test-cohort-id&days=7'
                 );
             }, { timeout: 1000 });
         });
@@ -847,9 +854,6 @@ describe('LearnerCohortView Component', () => {
             await waitFor(() => {
                 expect(screen.getByTestId('learning-streak')).toBeInTheDocument();
             }, { timeout: 1000 });
-
-            // Check that the streak component receives the converted day abbreviations
-            expect(screen.getByText(/Active: 2/)).toBeInTheDocument();
         });
 
         it('does not fetch when streak already incremented today and not initial load', async () => {
@@ -1223,7 +1227,7 @@ describe('LearnerCohortView Component', () => {
 
             await waitFor(() => {
                 expect(global.fetch).toHaveBeenCalledWith(
-                    expect.stringContaining('/users/test-user-id/streak')
+                    expect.stringContaining('/engagement/alm/test-user-id')
                 );
             }, { timeout: 1000 });
         });

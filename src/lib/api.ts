@@ -16,6 +16,7 @@ export interface Course {
   updatedAt?: string;
   moduleCount?: number;
   role?: string;
+  cohort_id?: number;
   org?: {
     id: number;
     name: string;
@@ -38,55 +39,82 @@ export interface School {
   // Add other fields as needed
 }
 
+interface ApiHookOptions {
+  refreshIntervalMs?: number;
+}
+
 /**
  * Hook to fetch courses for the current user
  */
-export function useCourses() {
+export function useCourses(options: ApiHookOptions = {}) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  
-  // Fetch courses immediately when user ID is available
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id || authLoading) {
+  const { refreshIntervalMs = 0 } = options;
+
+  const fetchCourses = useCallback(async () => {
+    if (!isAuthenticated || !user?.id) {
+      setCourses([]);
+      setError(null);
+      setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
-    
-    // Simple fetch without caching
-    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/users/${user.id}/courses`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Request failed: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        // Transform the API response to match the expected format
-        const formattedCourses: Course[] = data.map((course: any) => ({
-          id: course.id,
-          title: course.name,
-          role: course.role,
-          cohort_id: course.cohort_id,
-          org: course.org,
-          org_id: course.org.id,
-          coverImage: course.coverImage,
-          createdAt: course.createdAt,
-          updatedAt: course.updatedAt
-        }));
-        
-        setCourses(formattedCourses);
-      })
-      .catch(err => {
-        console.error('Error fetching courses:', err);
-        setError(err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, [user?.id, isAuthenticated, authLoading]);
+    setError(null);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/users/${user.id}/courses`);
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Transform the API response to match the expected format
+      const formattedCourses: Course[] = data.map((course: any) => ({
+        id: course.id,
+        title: course.name,
+        role: course.role,
+        cohort_id: course.cohort_id,
+        org: course.org,
+        org_id: course.org.id,
+        coverImage: course.coverImage,
+        createdAt: course.createdAt,
+        updatedAt: course.updatedAt
+      }));
+
+      setCourses(formattedCourses);
+    } catch (err) {
+      console.error('Error fetching courses:', err);
+      setError(err as Error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user?.id]);
+  
+  // Resolve loading state from auth first, then fetch when user context is ready.
+  useEffect(() => {
+    if (authLoading) {
+      setIsLoading(true);
+      return;
+    }
+
+    void fetchCourses();
+
+    if (refreshIntervalMs <= 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchCourses();
+    }, refreshIntervalMs);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [authLoading, fetchCourses, refreshIntervalMs]);
   
   return {
     courses,
@@ -98,50 +126,74 @@ export function useCourses() {
 /**
  * Hook to fetch schools for the current user
  */
-export function useSchools() {
+export function useSchools(options: ApiHookOptions = {}) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [schools, setSchools] = useState<School[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  
-  // Fetch schools immediately when user ID is available
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id || authLoading) {
+  const { refreshIntervalMs = 0 } = options;
+
+  const fetchSchools = useCallback(async () => {
+    if (!isAuthenticated || !user?.id) {
+      setSchools([]);
+      setError(null);
+      setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
-    
-    // Simple fetch without caching
-    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/users/${user.id}/orgs`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Request failed: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        // Transform the API response to match the expected format
-        const formattedSchools: School[] = data.map((org: any) => ({
-          id: org.id,
-          name: org.name,
-          description: org.description,
-          url: org.url,
-          role: org.role,
-          createdAt: org.createdAt,
-          updatedAt: org.updatedAt
-        }));
-        
-        setSchools(formattedSchools);
-      })
-      .catch(err => {
-        console.error('Error fetching schools:', err);
-        setError(err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, [user?.id, isAuthenticated, authLoading]);
+    setError(null);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/users/${user.id}/orgs`);
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Transform the API response to match the expected format
+      const formattedSchools: School[] = data.map((org: any) => ({
+        id: org.id,
+        name: org.name,
+        description: org.description,
+        url: org.url,
+        role: org.role,
+        slug: org.slug,
+        createdAt: org.createdAt,
+        updatedAt: org.updatedAt
+      }));
+
+      setSchools(formattedSchools);
+    } catch (err) {
+      console.error('Error fetching schools:', err);
+      setError(err as Error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user?.id]);
+  
+  // Resolve loading state from auth first, then fetch when user context is ready.
+  useEffect(() => {
+    if (authLoading) {
+      setIsLoading(true);
+      return;
+    }
+
+    void fetchSchools();
+
+    if (refreshIntervalMs <= 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchSchools();
+    }, refreshIntervalMs);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [authLoading, fetchSchools, refreshIntervalMs]);
   
   return {
     schools,

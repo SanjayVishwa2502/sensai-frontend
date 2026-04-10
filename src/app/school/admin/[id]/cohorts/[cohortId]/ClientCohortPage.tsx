@@ -15,8 +15,10 @@ import CohortDashboard from "@/components/CohortDashboard";
 import CohortCoursesLinkerDropdown from "@/components/CohortCoursesLinkerDropdown";
 import SettingsDialog from "@/components/SettingsDialog";
 import CreateBatchDialog from "@/components/CreateBatchDialog";
+import EngagementDashboard from "@/components/engagement/EngagementDashboard";
 import { CohortWithDetails as Cohort } from "@/types";
 import { DripConfig } from "@/types/course";
+import { useAuth } from "@/lib/auth";
 
 interface Course {
     id: number;
@@ -26,7 +28,7 @@ interface Course {
     drip_config?: DripConfig;
 }
 
-type TabType = 'dashboard' | 'learners' | 'mentors' | 'batches';
+type TabType = 'dashboard' | 'engagement' | 'learners' | 'mentors' | 'batches';
 
 interface ClientCohortPageProps {
     schoolId: string;
@@ -78,6 +80,8 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
     const [tab, setTab] = useState<TabType>('dashboard');
     const [cohort, setCohort] = useState<Cohort | null>(null);
     const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
+    const userId = user?.id || '';
 
     const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -541,6 +545,9 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
     // Get learners and mentors from cohort
     const learners = cohort?.members?.filter(member => member.role === 'learner') || [];
     const mentors = cohort?.members?.filter(member => member.role === 'mentor') || [];
+    const learnerPortalHref = schoolSlug
+        ? `/school/${schoolSlug}?cohort_id=${cohortId}`
+        : '';
 
     // Effect to fetch batches when batch tab is selected
     useEffect(() => {
@@ -550,78 +557,65 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tab, cohortId]);
 
-    useEffect(() => {
-        const fetchCohort = async () => {
-            if (!cohortId || cohortId === 'undefined') {
-                console.error("Invalid cohortId:", cohortId);
-                setLoading(false);
-                return;
+    const refreshCohortData = useCallback(async (showLoadingState: boolean = true) => {
+        if (!cohortId || cohortId === 'undefined') {
+            console.error("Invalid cohortId:", cohortId);
+            setLoading(false);
+            return;
+        }
+
+        if (showLoadingState) {
+            setLoading(true);
+        }
+
+        try {
+            const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/cohorts/${cohortId}`;
+
+            const cohortResponse = await fetch(url);
+            if (!cohortResponse.ok) {
+                throw new Error(`API error: ${cohortResponse.status}`);
             }
 
-            setLoading(true);
+            const cohortData = await cohortResponse.json();
+            setCohort(cohortData);
+
+            // Fetch school details to get the slug
             try {
-                const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/cohorts/${cohortId}`;
-
-                const cohortResponse = await fetch(url);
-                if (!cohortResponse.ok) {
-                    throw new Error(`API error: ${cohortResponse.status}`);
+                const schoolResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/organizations/${schoolId}`);
+                if (schoolResponse.ok) {
+                    const schoolData = await schoolResponse.json();
+                    setSchoolSlug(schoolData.slug);
                 }
+            } catch (error) {
+                console.error("Error fetching school details:", error);
+            }
 
-                const cohortData = await cohortResponse.json();
+            // Fetch courses in cohort
+            try {
+                const cohortCoursesResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/cohorts/${cohortId}/courses`);
+                if (cohortCoursesResponse.ok) {
+                    const cohortCoursesData = await cohortCoursesResponse.json();
+                    const courses = Array.isArray(cohortCoursesData) ? cohortCoursesData : [];
+                    setCohort(prev => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            courses: courses
+                        };
+                    });
+                    setSelectedCourseIds(courses.map((course: Course) => course.id));
 
-                setCohort(cohortData);
-                setLoading(false);
-
-                // Fetch school details to get the slug
-                try {
-                    const schoolResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/organizations/${schoolId}`);
-                    if (schoolResponse.ok) {
-                        const schoolData = await schoolResponse.json();
-                        setSchoolSlug(schoolData.slug);
-                    }
-                } catch (error) {
-                    console.error("Error fetching school details:", error);
-                }
-
-                // Fetch courses in cohort
-                try {
-                    const cohortCoursesResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/cohorts/${cohortId}/courses`);
-                    if (cohortCoursesResponse.ok) {
-                        const cohortCoursesData = await cohortCoursesResponse.json();
-                        const courses = Array.isArray(cohortCoursesData) ? cohortCoursesData : [];
-                        setCohort(prev => {
-                            if (!prev) return prev;
-                            return {
-                                ...prev,
-                                courses: courses
-                            };
-                        });
-                        setSelectedCourseIds(courses.map((course: Course) => course.id));
-
-                        // Set default tab to dashboard if courses exist
+                    // Set default tab to dashboard if courses exist
+                    if (showLoadingState) {
                         if (courses.length > 0) {
                             setTab('dashboard');
                         } else {
                             // Set default tab to learners if no courses exist
                             setTab('learners');
                         }
-                    } else {
-                        // If cohort courses fetch fails, set empty array
-                        setCohort(prev => {
-                            if (!prev) return prev;
-                            return {
-                                ...prev,
-                                courses: []
-                            };
-                        });
-                        setTab('learners');
                     }
-
-                    // Fetch available courses
-                    fetchAvailableCourses();
-                } catch (error) {
-                    console.error("Error fetching cohort courses:", error);
-                    // Ensure cohort has empty courses array on error
+                } else {
+                    // If cohort courses fetch fails, set empty array
                     setCohort(prev => {
                         if (!prev) return prev;
                         return {
@@ -629,24 +623,82 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
                             courses: []
                         };
                     });
+                    if (showLoadingState) {
+                        setTab('learners');
+                    }
+                }
+
+                // Fetch available courses
+                fetchAvailableCourses();
+            } catch (error) {
+                console.error("Error fetching cohort courses:", error);
+                // Ensure cohort has empty courses array on error
+                setCohort(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        courses: []
+                    };
+                });
+                if (showLoadingState) {
                     setTab('learners');
                 }
-            } catch (error) {
-                console.error("Error fetching cohort:", error);
-                setCohort({
-                    id: parseInt(cohortId),
-                    name: "Cohort (Data Unavailable)",
-                    org_id: 0,
-                    members: [],
-                    groups: [],
-                    joined_at: undefined
-                });
+            }
+        } catch (error) {
+            console.error("Error fetching cohort:", error);
+            setCohort({
+                id: parseInt(cohortId),
+                name: "Cohort (Data Unavailable)",
+                org_id: 0,
+                members: [],
+                groups: [],
+                joined_at: undefined
+            });
+        } finally {
+            if (showLoadingState) {
                 setLoading(false);
+            }
+        }
+    }, [cohortId, schoolId]);
+
+    useEffect(() => {
+        void refreshCohortData(true);
+    }, [refreshCohortData]);
+
+    useEffect(() => {
+        const refreshInBackground = () => {
+            void refreshCohortData(false);
+        };
+
+        const intervalId = window.setInterval(refreshInBackground, 10000);
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                refreshInBackground();
             }
         };
 
-        fetchCohort();
-    }, [cohortId, schoolId]);
+        const handleMembershipUpdate = () => {
+            refreshInBackground();
+        };
+
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === 'sensai:cohort-membership-updated') {
+                refreshInBackground();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('sensai:cohort-membership-updated', handleMembershipUpdate as EventListener);
+        window.addEventListener('storage', handleStorage);
+
+        return () => {
+            window.clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('sensai:cohort-membership-updated', handleMembershipUpdate as EventListener);
+            window.removeEventListener('storage', handleStorage);
+        };
+    }, [refreshCohortData]);
 
     const handleRequestDelete = (batch: Batch) => {
         setBatchToDelete(batch);
@@ -771,6 +823,29 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
                                                     <span>Edit</span>
                                                 </button>
 
+                                                {learnerPortalHref ? (
+                                                    <Link
+                                                        href={learnerPortalHref}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex items-center justify-center space-x-2 px-6 py-3 bg-gray-50 dark:bg-[#333] border border-gray-200 dark:border-transparent text-gray-900 dark:text-white text-sm font-medium rounded-full hover:bg-gray-100 dark:hover:bg-[#444] transition-colors cursor-pointer"
+                                                        data-testid="open-learner-portal-link"
+                                                    >
+                                                        <ExternalLink size={16} />
+                                                        <span>Open learner portal</span>
+                                                    </Link>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        disabled
+                                                        className="flex items-center justify-center space-x-2 px-6 py-3 bg-gray-50 dark:bg-[#333] border border-gray-200 dark:border-transparent text-gray-500 dark:text-gray-400 text-sm font-medium rounded-full cursor-not-allowed"
+                                                        data-testid="open-learner-portal-link"
+                                                    >
+                                                        <ExternalLink size={16} />
+                                                        <span>Open learner portal</span>
+                                                    </button>
+                                                )}
+
                                                 <button
                                                     onClick={handleInviteLearners}
                                                     className="flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 text-white text-sm font-medium rounded-full hover:bg-blue-700 transition-colors cursor-pointer"
@@ -867,6 +942,15 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
                                     </button>
                                 )}
                                 <button
+                                    className={`flex-1 px-4 py-2 font-light cursor-pointer ${tab === 'engagement' ? 'text-black dark:text-white border-b-2 border-black dark:border-white' : 'text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white'}`}
+                                    onClick={() => setTab('engagement')}
+                                >
+                                    <div className="flex items-center justify-center">
+                                        <span className="mr-2">🔥</span>
+                                        Engagement
+                                    </div>
+                                </button>
+                                <button
                                     className={`flex-1 px-4 py-2 font-light cursor-pointer ${tab === 'learners' ? 'text-black dark:text-white border-b-2 border-black dark:border-white' : 'text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white'}`}
                                     onClick={() => setTab('learners')}
                                 >
@@ -905,6 +989,25 @@ export default function ClientCohortPage({ schoolId, cohortId }: ClientCohortPag
                                 schoolSlug={schoolSlug}
                                 onAddLearners={handleOpenLearnerInviteDialog}
                             />
+                        )}
+
+                        {tab === 'engagement' && (
+                            <div className="py-4">
+                                <div className="mb-4 flex items-center justify-end">
+                                    <Link
+                                        href={`/school/admin/${schoolId}/cohorts/${cohortId}/engagement`}
+                                        className="inline-flex items-center gap-2 rounded-full border border-gray-300 dark:border-gray-700 px-4 py-2 text-xs font-medium text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                                    >
+                                        <ExternalLink size={12} />
+                                        Open Full Engagement View
+                                    </Link>
+                                </div>
+                                <EngagementDashboard
+                                    userId={userId}
+                                    cohortId={cohortId}
+                                    role="admin"
+                                />
+                            </div>
                         )}
 
                         {tab === 'learners' && (

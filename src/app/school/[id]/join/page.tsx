@@ -3,7 +3,6 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { useThemePreference } from "@/lib/hooks/useThemePreference";
 import { CheckCircle, AlertCircle } from "lucide-react";
 import Toast from "@/components/Toast";
 
@@ -25,14 +24,30 @@ export default function JoinCohortPage() {
     const slug = params?.id as string;
     const cohortId = searchParams.get("cohortId");
 
+    const broadcastMembershipUpdate = () => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const payload = JSON.stringify({
+            type: "cohort_membership_updated",
+            cohortId,
+            schoolSlug: slug,
+            at: Date.now(),
+        });
+
+        localStorage.setItem("sensai:cohort-membership-updated", payload);
+        window.dispatchEvent(new Event("sensai:cohort-membership-updated"));
+    };
+
     useEffect(() => {
         // Wait for auth to be ready
         if (isLoading) return;
 
         // Make sure user is authenticated
         if (!isAuthenticated || !user?.email) {
-            setStatus("error");
-            setErrorMessage("You must be logged in to join a cohort");
+            const callbackUrl = encodeURIComponent(`/school/${slug}/join?cohortId=${cohortId || ""}`);
+            router.replace(`/login/student?callbackUrl=${callbackUrl}`);
             return;
         }
 
@@ -68,6 +83,7 @@ export default function JoinCohortPage() {
 
                         // Redirect to school page after a short delay
                         setTimeout(() => {
+                            broadcastMembershipUpdate();
                             router.push(`/school/${slug}?cohort_id=${cohortId}`);
                         }, 1500);
                         return;
@@ -97,6 +113,7 @@ export default function JoinCohortPage() {
 
                 // Redirect to the school page after a short delay
                 setTimeout(() => {
+                    broadcastMembershipUpdate();
                     router.push(`/school/${slug}?cohort_id=${cohortId}`);
                 }, 1500);
             } catch (error) {

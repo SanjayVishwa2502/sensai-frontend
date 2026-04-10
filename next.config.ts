@@ -14,12 +14,18 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   output: 'standalone',
-  experimental: {
-    turbo: {
-      resolveAlias: {
-        canvas: './empty-module.ts',
-      },
+  turbopack: {
+    resolveAlias: {
+      canvas: './empty-module.ts',
     },
+  },
+  webpack: (config) => {
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      canvas: false,
+    };
+    return config;
   },
 };
 

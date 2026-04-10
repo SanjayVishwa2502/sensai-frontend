@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { Course, CohortWithDetails, CohortMember } from "@/types";
 import CohortDashboard from "@/components/CohortDashboard";
 import LearnerCohortView from "@/components/LearnerCohortView";
+import EngagementDashboard from "@/components/engagement/EngagementDashboard";
 import { Module } from "@/types/course";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, Users } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 interface TaskTypeMetrics {
     completion_rate: number;
@@ -52,6 +54,8 @@ export default function MentorCohortView({
 }: MentorCohortViewProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { user } = useAuth();
+    const userId = user?.id || '';
 
     // Get view mode from URL params, default to 'mentor'
     const urlView = searchParams.get('view');
@@ -176,16 +180,28 @@ export default function MentorCohortView({
 
             {/* Render appropriate view */}
             {viewMode === 'mentor' ? (
-                <CohortDashboard
-                    cohort={cohortWithMembers}
-                    cohortId={cohort.id.toString()}
-                    schoolId={schoolId}
-                    schoolSlug={schoolSlug}
-                    view="mentor"
-                    activeCourseIndex={activeCourseIndex}
-                    onActiveCourseChange={onActiveCourseChange}
-                    batchId={batchId}
-                />
+                <>
+                    {/* Admin Engagement Intelligence */}
+                    <div className="mb-8">
+                        <EngagementDashboard
+                            userId={userId}
+                            cohortId={cohort.id.toString()}
+                            role="admin"
+                        />
+                    </div>
+
+                    {/* Existing Cohort Dashboard */}
+                    <CohortDashboard
+                        cohort={cohortWithMembers}
+                        cohortId={cohort.id.toString()}
+                        schoolId={schoolId}
+                        schoolSlug={schoolSlug}
+                        view="mentor"
+                        activeCourseIndex={activeCourseIndex}
+                        onActiveCourseChange={onActiveCourseChange}
+                        batchId={batchId}
+                    />
+                </>
             ) : (
                 <LearnerCohortView
                     courseTitle={courses.length > 1 ? "" : courses[activeCourseIndex]?.name || ""}

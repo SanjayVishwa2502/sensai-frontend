@@ -342,6 +342,7 @@ describe('ClientCohortPage', () => {
             expect(screen.getByTestId('header')).toBeInTheDocument();
             expect(screen.getByText('Back to cohorts')).toBeInTheDocument();
             expect(screen.getByText('Edit')).toBeInTheDocument();
+            expect(screen.getByText('Open learner portal')).toBeInTheDocument();
             expect(screen.getByText('Invite learners')).toBeInTheDocument();
             expect(screen.getByText('Link course')).toBeInTheDocument();
         });

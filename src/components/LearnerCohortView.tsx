@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import LearnerCourseView from "./LearnerCourseView";
 import LearningStreak from "./LearningStreak";
 import TopPerformers from "./TopPerformers";
+import EngagementDashboard from "./engagement/EngagementDashboard";
 import { Module } from "@/types/course";
 import { useAuth } from "@/lib/auth";
 import { Course, Cohort } from "@/types";
 import { ChevronDown } from "lucide-react";
 import MobileDropdown, { DropdownOption } from "./MobileDropdown";
+import { getALM, UserALMSummaryResponse } from "@/lib/engagement-api";
+import { useALMTracker } from "@/lib/hooks/useALMTracker";
 
 // Constants for localStorage keys
 const LAST_INCREMENT_DATE_KEY = 'streak_last_increment_date';
 const LAST_STREAK_COUNT_KEY = 'streak_last_count';
+const ALM_STREAK_THRESHOLD_SECONDS = 900;
+const ALM_LOOKBACK_DAYS = 7;
 
 // Mobile tab options
 enum MobileTab {
@@ -38,6 +43,48 @@ interface LearnerCohortViewProps {
 interface StreakData {
     streak_count: number;
     active_days: string[]; // Format: YYYY-MM-DD
+}
+
+function deriveStreakFromPayload(
+    payload: UserALMSummaryResponse | StreakData,
+    lookbackDays: number,
+) {
+    if (
+        typeof (payload as StreakData).streak_count === 'number' &&
+        Array.isArray((payload as StreakData).active_days)
+    ) {
+        return {
+            streakCount: (payload as StreakData).streak_count,
+            activeDates: (payload as StreakData).active_days,
+        };
+    }
+
+    const almMap = (payload as UserALMSummaryResponse).daily_alm_seconds ?? {};
+    const today = new Date();
+    let streakCount = 0;
+
+    for (let offset = 0; offset < lookbackDays; offset++) {
+        const day = new Date(today);
+        day.setDate(today.getDate() - offset);
+        const dayKey = day.toISOString().split('T')[0];
+        const almSeconds = Number(almMap[dayKey] ?? 0);
+
+        if (almSeconds >= ALM_STREAK_THRESHOLD_SECONDS) {
+            streakCount += 1;
+        } else {
+            break;
+        }
+    }
+
+    const activeDates = Object.entries(almMap)
+        .filter(([, value]) => Number(value) >= ALM_STREAK_THRESHOLD_SECONDS)
+        .map(([day]) => day)
+        .slice(-lookbackDays);
+
+    return {
+        streakCount,
+        activeDates,
+    };
 }
 
 export default function LearnerCohortView({
@@ -114,6 +161,23 @@ export default function LearnerCohortView({
     const { user } = useAuth();
     const userId = user?.id || '';
 
+    const trackerCohortId = useMemo(() => {
+        const parsed = Number(cohortId);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }, [cohortId]);
+
+    const trackerTaskId = useMemo(() => {
+        const parsed = Number(taskId);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }, [taskId]);
+
+    useALMTracker({
+        userId,
+        cohortId: trackerCohortId,
+        taskId: trackerTaskId,
+        enabled: Boolean(userId && cohortId),
+    });
+
     // Use refs for last increment tracking to avoid dependency cycles
     const lastIncrementDateRef = useRef<string | null>(null);
     const lastStreakCountRef = useRef<number>(streakDays);
@@ -176,16 +240,18 @@ export default function LearnerCohortView({
         setIsLoadingStreak(true);
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/users/${userId}/streak?cohort_id=${cohortId}`);
+            const data = await getALM(userId, {
+                cohortId,
+                days: ALM_LOOKBACK_DAYS,
+            });
 
-            if (!response.ok) {
-                throw new Error(`Failed to fetch streak data: ${response.status}`);
-            }
-
-            const data: StreakData = await response.json();
+            const {
+                streakCount: nextStreakCount,
+                activeDates,
+            } = deriveStreakFromPayload(data as UserALMSummaryResponse | StreakData, ALM_LOOKBACK_DAYS);
 
             // Check if streak count has increased since last fetch
-            const hasStreakIncremented = data.streak_count > lastStreakCountRef.current;
+            const hasStreakIncremented = nextStreakCount > lastStreakCountRef.current;
 
             // If streak has increased, save today as the last increment date
             if (hasStreakIncremented) {
@@ -206,15 +272,15 @@ export default function LearnerCohortView({
             }
 
             // Update last streak count
-            lastStreakCountRef.current = data.streak_count;
+            lastStreakCountRef.current = nextStreakCount;
             localStorage.setItem(
                 `${LAST_STREAK_COUNT_KEY}_${userId}_${cohortId}`,
-                data.streak_count.toString()
+                nextStreakCount.toString()
             );
 
             // Set streak count and active days in state
-            setStreakCount(data.streak_count);
-            const dayAbbreviations = data.active_days.map(convertDateToDayOfWeek);
+            setStreakCount(nextStreakCount);
+            const dayAbbreviations = activeDates.map(convertDateToDayOfWeek);
             setActiveWeekDays(dayAbbreviations);
 
         } catch (error) {
@@ -429,14 +495,16 @@ export default function LearnerCohortView({
                     </div>
                 </div>
 
-                {/* Right Column: Streak and Performers */}
+                {/* Right Column: Engagement Engine Dashboard */}
                 {showSidebar && (
                     <div className={`w-full lg:w-1/3 space-y-6 mt-6 lg:mt-0 ${activeMobileTab === MobileTab.Course ? 'hidden lg:block' : ''}`}>
-                        {/* Streak component when not loading and cohort ID exists */}
-                        {!isLoadingStreak && cohortId && (
-                            <LearningStreak
-                                streakDays={streakCount}
-                                activeDays={activeWeekDays}
+                        {/* Full Engagement Dashboard */}
+                        {userId && cohortId && (
+                            <EngagementDashboard
+                                userId={userId}
+                                cohortId={cohortId}
+                                role="learner"
+                                layout="sidebar"
                             />
                         )}
 

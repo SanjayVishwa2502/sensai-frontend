@@ -17,7 +17,7 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = authRoutes.some(route => pathname.startsWith(route))
   
   // Public paths that don't require authentication
-  const publicPaths = ['/api/auth']
+  const publicPaths = ['/api/auth', '/engagement-demo']
   const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
   
   // If the path is public, allow access
@@ -28,7 +28,15 @@ export async function middleware(request: NextRequest) {
   // Redirect logic
   if (isAuthRoute) {
     if (token) {
-      // Logged in users trying to access login page - redirect to home
+      // Logged in users trying to access login routes - redirect to role-specific access if present
+      if (pathname.startsWith('/login/admin')) {
+        return NextResponse.redirect(new URL('/access/admin', request.url))
+      }
+
+      if (pathname.startsWith('/login/student')) {
+        return NextResponse.redirect(new URL('/access/student', request.url))
+      }
+
       return NextResponse.redirect(new URL('/', request.url))
     }
     // Allow non-logged in users to access auth pages

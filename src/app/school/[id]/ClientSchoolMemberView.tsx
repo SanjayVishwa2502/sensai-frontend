@@ -64,6 +64,16 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
     const [availableBatches, setAvailableBatches] = useState<{ id: number, name: string }[]>([]);
     const [showBatchSelector, setShowBatchSelector] = useState<boolean>(false);
 
+    const mapCohorts = (cohortsData: any[]): Cohort[] => (
+        cohortsData.map((cohort: any) => ({
+            id: cohort.id,
+            name: cohort.name,
+            joined_at: cohort.joined_at,
+            role: cohort.role,
+            batches: cohort.batches || undefined
+        }))
+    );
+
     // Fetch school data
     useEffect(() => {
         const fetchSchool = async () => {
@@ -117,13 +127,7 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
                 }
 
                 // Transform cohorts data
-                const transformedCohorts: Cohort[] = cohortsData.map((cohort: any) => ({
-                    id: cohort.id,
-                    name: cohort.name,
-                    joined_at: cohort.joined_at,
-                    role: cohort.role,
-                    batches: cohort.batches || undefined // add batches if present
-                }));
+                const transformedCohorts: Cohort[] = mapCohorts(cohortsData);
 
                 setCohorts(transformedCohorts);
 
@@ -156,6 +160,61 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
 
         fetchSchool();
     }, [slug, router, user?.id, isAuthenticated, authLoading, schools, defaultCohortId]);
+
+    // Auto-refresh learner memberships when no cohorts are currently visible.
+    useEffect(() => {
+        if (!school || !user?.id || isAdminOrOwner || cohorts.length > 0) {
+            return;
+        }
+
+        const refreshLearnerCohorts = async () => {
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/users/${user.id}/org/${school.id}/cohorts`);
+                if (!response.ok) {
+                    return;
+                }
+
+                const data = await response.json();
+                if (!Array.isArray(data) || data.length === 0) {
+                    return;
+                }
+
+                const refreshedCohorts = mapCohorts(data);
+                setCohorts(refreshedCohorts);
+                setActiveCohort((current) => {
+                    if (current && refreshedCohorts.some((cohort) => cohort.id === current.id)) {
+                        return current;
+                    }
+                    return refreshedCohorts[0] || null;
+                });
+            } catch (error) {
+                console.error("Error refreshing learner cohorts:", error);
+            }
+        };
+
+        const handleMembershipUpdate = () => {
+            void refreshLearnerCohorts();
+        };
+
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === "sensai:cohort-membership-updated") {
+                void refreshLearnerCohorts();
+            }
+        };
+
+        const intervalId = window.setInterval(() => {
+            void refreshLearnerCohorts();
+        }, 10000);
+
+        window.addEventListener("sensai:cohort-membership-updated", handleMembershipUpdate as EventListener);
+        window.addEventListener("storage", handleStorage);
+
+        return () => {
+            window.clearInterval(intervalId);
+            window.removeEventListener("sensai:cohort-membership-updated", handleMembershipUpdate as EventListener);
+            window.removeEventListener("storage", handleStorage);
+        };
+    }, [cohorts.length, isAdminOrOwner, school, user?.id]);
 
     // Add useEffect to update batch state when activeCohort changes
     useEffect(() => {
@@ -435,6 +494,7 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
                                 <div className="flex flex-col items-center justify-center py-12 rounded-lg text-center">
                                     <h3 className="text-xl font-light mb-2 text-black dark:text-white">No cohorts available</h3>
                                     <p className="text-gray-400">You are not enrolled in any cohorts for this school</p>
+                                    <p className="text-gray-500 mt-2 text-sm">Checking for new enrollments every 10 seconds</p>
                                 </div>
                             </div>
                         )}
