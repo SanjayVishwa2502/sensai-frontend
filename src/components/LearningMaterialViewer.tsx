@@ -263,6 +263,7 @@ export default function LearningMaterialViewer({
                 task_type: 'learning_material',
                 user_id: userId,
                 user_email: user?.email,
+                login_session_id: user?.id || user?.email || String(userId || ''),
             };
 
             let receivedAnyResponse = false;

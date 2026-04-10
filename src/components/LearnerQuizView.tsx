@@ -854,6 +854,7 @@ export default function LearnerQuizView({
                     user_id: userId,
                     user_email: user?.email,
                     task_id: taskId,
+                    login_session_id: user?.id || user?.email || String(userId || ''),
                     task_type: 'quiz'
                 };
             } else {
@@ -865,6 +866,7 @@ export default function LearnerQuizView({
                     user_id: userId,
                     user_email: user?.email,
                     task_id: taskId,
+                    login_session_id: user?.id || user?.email || String(userId || ''),
                     task_type: 'quiz'
                 };
             }
